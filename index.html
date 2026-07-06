@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>ニセタン - 英単語落下ゲーム</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ホーム画面 -->
+    <section id="screen-home" class="screen active">
+      <h1 class="logo">ニセタン</h1>
+      <p class="tagline">落ちてくる英単語を3択でキャッチ！<br>TOEIC 800点レベルの単語をマスターしよう</p>
+      <div class="home-stats">
+        <div class="stat-box">
+          <span class="stat-label">習得済み</span>
+          <span class="stat-value" id="stat-mastered">0</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">復習待ち</span>
+          <span class="stat-value" id="stat-review">0</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">ハイスコア</span>
+          <span class="stat-value" id="stat-highscore">0</span>
+        </div>
+      </div>
+      <button id="btn-to-preview" class="btn btn-primary">プレイする単語を予習する</button>
+      <button id="btn-reset" class="btn btn-ghost">学習データをリセット</button>
+    </section>
+
+    <!-- 予習画面 -->
+    <section id="screen-preview" class="screen">
+      <h2 class="screen-title">📖 予習 — 今回出題される単語</h2>
+      <p class="hint">意味を確認してからスタート！「復習」マークは前回間違えた単語です。</p>
+      <ul id="preview-list" class="word-list"></ul>
+      <div class="preview-actions">
+        <button id="btn-hide-meanings" class="btn btn-ghost">意味を隠してテスト</button>
+        <button id="btn-start" class="btn btn-primary">ゲームスタート！</button>
+      </div>
+      <button id="btn-back-home" class="btn btn-ghost">← 戻る</button>
+    </section>
+
+    <!-- ゲーム画面 -->
+    <section id="screen-game" class="screen">
+      <header class="game-header">
+        <div class="game-info">⏱ <span id="time-left">50</span>秒</div>
+        <div class="game-info score">💎 <span id="score">0</span>pt</div>
+        <div class="game-info">残り <span id="words-left">0</span>語</div>
+      </header>
+      <div id="play-area">
+        <div class="lane-divider" style="left: 33.33%"></div>
+        <div class="lane-divider" style="left: 66.66%"></div>
+        <div id="ground"></div>
+      </div>
+      <div id="answer-panel">
+        <div id="target-word" class="target-word">&nbsp;</div>
+        <div id="choices" class="choices">
+          <button class="choice-btn" data-index="0"></button>
+          <button class="choice-btn" data-index="1"></button>
+          <button class="choice-btn" data-index="2"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 結果・復習画面 -->
+    <section id="screen-result" class="screen">
+      <h2 class="screen-title">📝 結果・復習</h2>
+      <div class="result-summary">
+        <div class="result-score">SCORE <span id="result-score">0</span>pt</div>
+        <div id="result-detail" class="result-detail"></div>
+      </div>
+      <ul id="result-list" class="word-list"></ul>
+      <p class="hint" id="requeue-note"></p>
+      <div class="preview-actions">
+        <button id="btn-retry" class="btn btn-primary">もう一回プレイ</button>
+        <button id="btn-result-home" class="btn btn-ghost">ホームへ</button>
+      </div>
+    </section>
+
+  </div>
+  <script src="js/words.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
