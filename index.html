@@ -12,7 +12,11 @@
     <!-- ホーム画面 -->
     <section id="screen-home" class="screen active">
       <h1 class="logo">ニセタン</h1>
-      <p class="tagline">落ちてくる英単語を3択でキャッチ！<br>TOEIC 800点レベルの単語をマスターしよう</p>
+      <p class="tagline">落ちてくる英単語を3択でキャッチ！<br>大学入試〜TOEIC 800点レベルの単語をマスターしよう</p>
+
+      <p class="section-label">レベルを選ぶ</p>
+      <div class="level-select" id="level-select"></div>
+
       <div class="home-stats">
         <div class="stat-box">
           <span class="stat-label">習得済み</span>
@@ -33,7 +37,7 @@
 
     <!-- 予習画面 -->
     <section id="screen-preview" class="screen">
-      <h2 class="screen-title">📖 予習 — 今回出題される単語</h2>
+      <h2 class="screen-title" id="preview-title">📖 予習 — 今回出題される単語</h2>
       <p class="hint">意味を確認してからスタート！「復習」マークは前回間違えた単語です。</p>
       <ul id="preview-list" class="word-list"></ul>
       <div class="preview-actions">

@@ -11,9 +11,10 @@ const SCORE_MISSED = -50;
 
 // ===== 学習データ (localStorage) =====
 const STORAGE_KEYS = {
-  review: "nisetan_review",     // 復習待ち(不正解・落下)の単語id
-  mastered: "nisetan_mastered", // 習得済みの単語id
-  highscore: "nisetan_highscore",
+  review: "nisetan_review",       // 復習待ち(不正解・落下)の単語id
+  mastered: "nisetan_mastered",   // 習得済みの単語id
+  highscore: "nisetan_highscore", // レベルごとのハイスコア {level: score}
+  level: "nisetan_level",         // 最後に選んだレベル
 };
 
 function loadIds(key) {
@@ -29,9 +30,20 @@ function saveIds(key, set) {
   localStorage.setItem(key, JSON.stringify([...set]));
 }
 
+function loadHighscores() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEYS.highscore)) || {};
+  } catch {
+    return {};
+  }
+}
+
 let reviewSet = loadIds(STORAGE_KEYS.review);
 let masteredSet = loadIds(STORAGE_KEYS.mastered);
-let highscore = Number(localStorage.getItem(STORAGE_KEYS.highscore)) || 0;
+let highscores = loadHighscores();
+let selectedLevel =
+  localStorage.getItem(STORAGE_KEYS.level) ||
+  (typeof LEVELS !== "undefined" ? LEVELS[0].id : "univ");
 
 // ===== ユーティリティ =====
 function shuffle(arr) {
@@ -51,12 +63,15 @@ function showScreen(id) {
 }
 
 // ===== 出題単語の選定 =====
-// 復習待ちの単語を最優先で出題し、残りを未習得→習得済みの順で埋める
+// 選択中のレベルの単語から、復習待ちを最優先で出題し、
+// 残りを未習得→習得済みの順で埋める
 function selectRoundWords() {
-  const byId = new Map(WORDS.map((w) => [w.id, w]));
-  const review = shuffle([...reviewSet].filter((id) => byId.has(id))).map((id) => byId.get(id));
-  const fresh = shuffle(WORDS.filter((w) => !reviewSet.has(w.id) && !masteredSet.has(w.id)));
-  const mastered = shuffle(WORDS.filter((w) => masteredSet.has(w.id) && !reviewSet.has(w.id)));
+  const pool = WORDS.filter((w) => w.level === selectedLevel);
+  const inLevel = new Set(pool.map((w) => w.id));
+  const byId = new Map(pool.map((w) => [w.id, w]));
+  const review = shuffle([...reviewSet].filter((id) => inLevel.has(id))).map((id) => byId.get(id));
+  const fresh = shuffle(pool.filter((w) => !reviewSet.has(w.id) && !masteredSet.has(w.id)));
+  const mastered = shuffle(pool.filter((w) => masteredSet.has(w.id) && !reviewSet.has(w.id)));
   return [...review, ...fresh, ...mastered].slice(0, ROUND_WORD_COUNT);
 }
 
@@ -80,6 +95,8 @@ function newGameState() {
 // ===== 予習画面 =====
 function renderPreview() {
   roundWords = selectRoundWords();
+  const levelLabel = LEVELS.find((l) => l.id === selectedLevel)?.label || "";
+  $("#preview-title").textContent = `📖 予習 — ${levelLabel}`;
   const list = $("#preview-list");
   list.classList.remove("meanings-hidden");
   $("#btn-hide-meanings").textContent = "意味を隠してテスト";
@@ -195,9 +212,10 @@ function updateTarget() {
   lowest.el.classList.add("target");
   $("#target-word").textContent = lowest.word.en;
 
-  const distractors = shuffle(WORDS.filter((w) => w.id !== lowest.word.id))
-    .slice(0, 2)
-    .map((w) => w.ja);
+  // ダミーの選択肢は同じレベルから選び、難易度をそろえる
+  let pool = WORDS.filter((w) => w.level === lowest.word.level && w.id !== lowest.word.id);
+  if (pool.length < 2) pool = WORDS.filter((w) => w.id !== lowest.word.id);
+  const distractors = shuffle(pool).slice(0, 2).map((w) => w.ja);
   const choices = shuffle([lowest.word.ja, ...distractors]);
   document.querySelectorAll(".choice-btn").forEach((b, i) => {
     b.textContent = choices[i];
@@ -281,10 +299,11 @@ function endGame() {
   saveIds(STORAGE_KEYS.review, reviewSet);
   saveIds(STORAGE_KEYS.mastered, masteredSet);
 
-  const isRecord = game.score > highscore;
+  const prevBest = highscores[selectedLevel] || 0;
+  const isRecord = game.score > prevBest;
   if (isRecord) {
-    highscore = game.score;
-    localStorage.setItem(STORAGE_KEYS.highscore, String(highscore));
+    highscores[selectedLevel] = game.score;
+    localStorage.setItem(STORAGE_KEYS.highscore, JSON.stringify(highscores));
   }
 
   renderResult(isRecord);
@@ -325,10 +344,33 @@ function renderResult(isRecord) {
 }
 
 // ===== ホーム =====
+function renderLevelSelect() {
+  const container = $("#level-select");
+  container.innerHTML = "";
+  for (const lv of LEVELS) {
+    const btn = document.createElement("button");
+    btn.className = "level-btn" + (lv.id === selectedLevel ? " active" : "");
+    btn.dataset.level = lv.id;
+    btn.innerHTML = `<span class="level-name">${lv.label}</span><span class="level-desc">${lv.desc}</span>`;
+    btn.addEventListener("click", () => {
+      selectedLevel = lv.id;
+      localStorage.setItem(STORAGE_KEYS.level, selectedLevel);
+      renderHome();
+    });
+    container.appendChild(btn);
+  }
+}
+
 function renderHome() {
-  $("#stat-mastered").textContent = String(masteredSet.size);
-  $("#stat-review").textContent = String(reviewSet.size);
-  $("#stat-highscore").textContent = String(highscore);
+  renderLevelSelect();
+  // 選択中レベルの単語だけで集計する
+  const levelIds = WORDS.filter((w) => w.level === selectedLevel).map((w) => w.id);
+  const total = levelIds.length;
+  const mastered = levelIds.filter((id) => masteredSet.has(id)).length;
+  const review = levelIds.filter((id) => reviewSet.has(id)).length;
+  $("#stat-mastered").textContent = `${mastered}/${total}`;
+  $("#stat-review").textContent = String(review);
+  $("#stat-highscore").textContent = String(highscores[selectedLevel] || 0);
 }
 
 // ===== イベント =====
@@ -365,7 +407,7 @@ $("#btn-reset").addEventListener("click", () => {
   if (!confirm("習得済み・復習待ち・ハイスコアの記録をすべて消します。よろしいですか？")) return;
   reviewSet = new Set();
   masteredSet = new Set();
-  highscore = 0;
+  highscores = {};
   Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
   renderHome();
 });

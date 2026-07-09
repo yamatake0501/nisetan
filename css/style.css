@@ -53,7 +53,7 @@ body {
 .logo {
   font-size: 44px;
   text-align: center;
-  margin-top: 12vh;
+  margin-top: 7vh;
   letter-spacing: 6px;
   background: linear-gradient(135deg, #38bdf8, #a78bfa);
   -webkit-background-clip: text;
@@ -66,7 +66,53 @@ body {
   color: var(--text-dim);
   font-size: 14px;
   line-height: 1.8;
-  margin: 16px 0 32px;
+  margin: 16px 0 24px;
+}
+
+.section-label {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+/* ---------- レベル選択 ---------- */
+.level-select {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.level-btn {
+  flex: 1;
+  background: var(--panel);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  padding: 12px 6px;
+  color: var(--text-dim);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.level-btn .level-name {
+  display: block;
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.level-btn .level-desc {
+  display: block;
+  font-size: 10px;
+  margin-top: 3px;
+  opacity: 0.8;
+}
+
+.level-btn.active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: #0c2a3a;
 }
 
 .home-stats {
