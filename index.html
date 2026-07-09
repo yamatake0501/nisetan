@@ -52,6 +52,7 @@
       <header class="game-header">
         <div class="game-info">⏱ <span id="time-left">50</span>秒</div>
         <div class="game-info score">💎 <span id="score">0</span>pt</div>
+        <div class="game-info combo" id="combo-info" hidden>🔥 <span id="combo-count">0</span>連続</div>
         <div class="game-info">残り <span id="words-left">0</span>語</div>
       </header>
       <div id="play-area">
@@ -60,12 +61,7 @@
         <div id="ground"></div>
       </div>
       <div id="answer-panel">
-        <div id="target-word" class="target-word">&nbsp;</div>
-        <div id="choices" class="choices">
-          <button class="choice-btn" data-index="0"></button>
-          <button class="choice-btn" data-index="1"></button>
-          <button class="choice-btn" data-index="2"></button>
-        </div>
+        <div id="lane-answers" class="lane-answers"></div>
       </div>
     </section>
 

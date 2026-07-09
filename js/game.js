@@ -8,6 +8,9 @@ const LANES = [16.67, 50, 83.33]; // レーンのx位置(%)
 const SCORE_CORRECT = 100;
 const SCORE_WRONG = -50;
 const SCORE_MISSED = -50;
+const SPEED_BONUS_MAX = 100;    // 即答した場合に上乗せされる最大ボーナス
+const COMBO_STEP = 0.1;         // 連続正解1つにつき倍率+10%
+const COMBO_MAX_MULTIPLIER = 3; // コンボ倍率の上限
 
 // ===== 学習データ (localStorage) =====
 const STORAGE_KEYS = {
@@ -62,6 +65,41 @@ function showScreen(id) {
   $(id).classList.add("active");
 }
 
+// ===== レーンごとの解答パネル =====
+// レーンごとに独立したターゲット単語・3択を持たせ、複数レーンを同時に回答できるようにする
+let laneEls = [];
+
+function buildLaneAnswers() {
+  const container = $("#lane-answers");
+  container.innerHTML = "";
+  laneEls = LANES.map((_, lane) => {
+    const card = document.createElement("div");
+    card.className = "lane-card";
+    card.dataset.lane = String(lane);
+
+    const targetEl = document.createElement("div");
+    targetEl.className = "lane-target";
+    targetEl.innerHTML = "&nbsp;";
+
+    const choicesEl = document.createElement("div");
+    choicesEl.className = "lane-choices";
+    const choiceBtns = [0, 1, 2].map((i) => {
+      const btn = document.createElement("button");
+      btn.className = "choice-btn";
+      btn.dataset.index = String(i);
+      btn.disabled = true;
+      btn.addEventListener("click", () => onChoice(lane, btn));
+      choicesEl.appendChild(btn);
+      return btn;
+    });
+
+    card.appendChild(targetEl);
+    card.appendChild(choicesEl);
+    container.appendChild(card);
+    return { card, targetEl, choiceBtns };
+  });
+}
+
 // ===== 出題単語の選定 =====
 // 選択中のレベルの単語から、復習待ちを最優先で出題し、
 // 残りを未習得→習得済みの順で埋める
@@ -84,10 +122,11 @@ function newGameState() {
     running: false,
     startTime: 0,
     score: 0,
+    combo: 0,              // 現在の連続正解数
     spawnedCount: 0,
-    falling: [],          // { word, el, spawnTime, lane, resolved }
-    target: null,
-    results: new Map(),   // id -> "correct" | "wrong" | "missed"
+    falling: [],           // { word, el, spawnTime, lane, resolved }
+    laneTargets: new Array(LANES.length).fill(null), // レーンごとの回答対象
+    results: new Map(),    // id -> "correct" | "wrong" | "missed"
     rafId: 0,
   };
 }
@@ -119,12 +158,9 @@ function startGame() {
   $("#time-left").textContent = String(GAME_SECONDS);
   $("#words-left").textContent = String(roundWords.length);
   $("#play-area").querySelectorAll(".falling-word, .float-score").forEach((el) => el.remove());
-  $("#target-word").innerHTML = "&nbsp;";
-  document.querySelectorAll(".choice-btn").forEach((b) => {
-    b.textContent = "";
-    b.disabled = true;
-    b.classList.remove("correct", "wrong");
-  });
+  buildLaneAnswers();
+  for (let lane = 0; lane < LANES.length; lane++) renderLaneChoices(lane, null);
+  updateComboDisplay();
   showScreen("#screen-game");
   game.rafId = requestAnimationFrame(tick);
 }
@@ -163,7 +199,7 @@ function tick(now) {
     f.el.style.top = `${-40 + progress * (areaH - 6 + 40)}px`;
   }
 
-  updateTarget();
+  updateTargets();
 
   // 全単語を処理し終えたら終了
   if (
@@ -187,21 +223,31 @@ function spawnWord(word, lane, now) {
   game.falling.push({ word, el, spawnTime: now, lane, resolved: false });
 }
 
-// 一番地面に近い未解決の単語をターゲットにする
-function updateTarget() {
-  const active = game.falling.filter((f) => !f.resolved);
-  const lowest = active.reduce(
-    (best, f) => (!best || f.spawnTime < best.spawnTime ? f : best),
-    null
-  );
-  if (lowest === game.target) return;
+// レーンごとに、一番地面に近い未解決の単語をそのレーンのターゲットにする。
+// レーンは互いに独立しているので、最大でレーン数ぶんの単語を同時に回答できる。
+function updateTargets() {
+  for (let lane = 0; lane < LANES.length; lane++) {
+    const active = game.falling.filter((f) => f.lane === lane && !f.resolved);
+    const nearest = active.reduce(
+      (best, f) => (!best || f.spawnTime < best.spawnTime ? f : best),
+      null
+    );
+    const prev = game.laneTargets[lane];
+    if (nearest === prev) continue;
 
-  if (game.target && !game.target.resolved) game.target.el.classList.remove("target");
-  game.target = lowest;
+    if (prev && !prev.resolved) prev.el.classList.remove("target");
+    game.laneTargets[lane] = nearest;
+    renderLaneChoices(lane, nearest);
+  }
+}
 
-  if (!lowest) {
-    $("#target-word").innerHTML = "&nbsp;";
-    document.querySelectorAll(".choice-btn").forEach((b) => {
+function renderLaneChoices(lane, f) {
+  const laneEl = laneEls[lane];
+  if (!laneEl) return;
+
+  if (!f) {
+    laneEl.targetEl.innerHTML = "&nbsp;";
+    laneEl.choiceBtns.forEach((b) => {
       b.textContent = "";
       b.disabled = true;
       b.classList.remove("correct", "wrong");
@@ -209,29 +255,42 @@ function updateTarget() {
     return;
   }
 
-  lowest.el.classList.add("target");
-  $("#target-word").textContent = lowest.word.en;
+  f.el.classList.add("target");
+  laneEl.targetEl.textContent = f.word.en;
 
   // ダミーの選択肢は同じレベルから選び、難易度をそろえる
-  let pool = WORDS.filter((w) => w.level === lowest.word.level && w.id !== lowest.word.id);
-  if (pool.length < 2) pool = WORDS.filter((w) => w.id !== lowest.word.id);
+  let pool = WORDS.filter((w) => w.level === f.word.level && w.id !== f.word.id);
+  if (pool.length < 2) pool = WORDS.filter((w) => w.id !== f.word.id);
   const distractors = shuffle(pool).slice(0, 2).map((w) => w.ja);
-  const choices = shuffle([lowest.word.ja, ...distractors]);
-  document.querySelectorAll(".choice-btn").forEach((b, i) => {
+  const choices = shuffle([f.word.ja, ...distractors]);
+  laneEl.choiceBtns.forEach((b, i) => {
     b.textContent = choices[i];
     b.disabled = false;
     b.classList.remove("correct", "wrong");
   });
 }
 
-function onChoice(btn) {
-  if (!game || !game.running || !game.target || game.target.resolved) return;
-  const t = game.target;
+function onChoice(lane, btn) {
+  if (!game || !game.running) return;
+  const t = game.laneTargets[lane];
+  if (!t || t.resolved) return;
+
   if (btn.textContent === t.word.ja) {
     btn.classList.add("correct");
     // 一度でも間違えた単語は「不正解」のまま(復習に回す)
     if (!game.results.has(t.word.id)) game.results.set(t.word.id, "correct");
-    addScore(SCORE_CORRECT, t.el);
+
+    // 早く答えるほどスピードボーナス、連続正解が続くほどコンボ倍率が上がる
+    const now = performance.now();
+    const progress = Math.min(1, Math.max(0, (now - t.spawnTime) / FALL_DURATION));
+    const speedBonus = Math.round(SPEED_BONUS_MAX * (1 - progress));
+    game.combo += 1;
+    const multiplier = Math.min(1 + (game.combo - 1) * COMBO_STEP, COMBO_MAX_MULTIPLIER);
+    const total = Math.round((SCORE_CORRECT + speedBonus) * multiplier);
+
+    addScore(total, t.el, { speedBonus, multiplier });
+    updateComboDisplay();
+
     t.resolved = true;
     t.el.classList.remove("target");
     t.el.classList.add("pop");
@@ -241,6 +300,8 @@ function onChoice(btn) {
     btn.classList.add("wrong");
     btn.disabled = true;
     game.results.set(t.word.id, "wrong");
+    game.combo = 0;
+    updateComboDisplay();
     addScore(SCORE_WRONG, t.el);
   }
 }
@@ -248,6 +309,8 @@ function onChoice(btn) {
 function resolveMissed(f) {
   f.resolved = true;
   game.results.set(f.word.id, "missed");
+  game.combo = 0;
+  updateComboDisplay();
   addScore(SCORE_MISSED, f.el);
   f.el.classList.remove("target");
   f.el.classList.add("crash");
@@ -255,18 +318,39 @@ function resolveMissed(f) {
   updateWordsLeft();
 }
 
+function updateComboDisplay() {
+  const el = $("#combo-info");
+  if (game.combo >= 2) {
+    el.hidden = false;
+    $("#combo-count").textContent = String(game.combo);
+    el.classList.remove("pulse");
+    void el.offsetWidth; // アニメーションを再トリガーするための強制リフロー
+    el.classList.add("pulse");
+  } else {
+    el.hidden = true;
+    el.classList.remove("pulse");
+  }
+}
+
 function updateWordsLeft() {
   const done = game.falling.filter((f) => f.resolved).length;
   $("#words-left").textContent = String(roundWords.length - done);
 }
 
-function addScore(delta, nearEl) {
+function addScore(delta, nearEl, bonus) {
   game.score += delta;
   $("#score").textContent = String(game.score);
-  // 単語の近くに +100 / -50 をふわっと表示
+  // 単語の近くに +100 / -50 と、スピード・コンボボーナスの内訳をふわっと表示
   const float = document.createElement("div");
   float.className = `float-score ${delta > 0 ? "plus" : "minus"}`;
-  float.textContent = delta > 0 ? `+${delta}` : String(delta);
+  let html = delta > 0 ? `+${delta}` : String(delta);
+  if (bonus) {
+    const parts = [];
+    if (bonus.speedBonus > 0) parts.push(`SPEED+${bonus.speedBonus}`);
+    if (bonus.multiplier > 1) parts.push(`COMBO×${bonus.multiplier.toFixed(1)}`);
+    if (parts.length) html += `<span class="float-sub">${parts.join(" ")}</span>`;
+  }
+  float.innerHTML = html;
   float.style.left = nearEl.style.left;
   float.style.top = nearEl.style.top;
   $("#play-area").appendChild(float);
@@ -410,10 +494,6 @@ $("#btn-reset").addEventListener("click", () => {
   highscores = {};
   Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
   renderHome();
-});
-
-document.querySelectorAll(".choice-btn").forEach((b) => {
-  b.addEventListener("click", () => onChoice(b));
 });
 
 renderHome();
