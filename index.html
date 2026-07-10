@@ -36,6 +36,7 @@
       </div>
       <button id="btn-to-preview" class="btn btn-primary">プレイする単語を予習する</button>
       <button id="btn-to-ranking" class="btn btn-ghost">🏆 ランキングを見る</button>
+      <button id="btn-to-weak" class="btn btn-ghost">📉 苦手単語</button>
       <button id="btn-reset" class="btn btn-ghost">学習データをリセット</button>
     </section>
 
@@ -46,6 +47,15 @@
       <div class="level-select" id="ranking-level-select"></div>
       <ol id="ranking-list" class="ranking-list"></ol>
       <button id="btn-ranking-home" class="btn btn-ghost">← 戻る</button>
+    </section>
+
+    <!-- 苦手単語画面 -->
+    <section id="screen-weak" class="screen">
+      <h2 class="screen-title">📉 苦手単語</h2>
+      <p class="hint">間違えた回数が多い順に表示します。正解するとカウントが減っていきます。</p>
+      <div class="level-select" id="weak-level-select"></div>
+      <ul id="weak-list" class="word-list"></ul>
+      <button id="btn-weak-home" class="btn btn-ghost">← 戻る</button>
     </section>
 
     <!-- 予習画面 -->
