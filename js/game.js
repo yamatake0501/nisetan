@@ -1,6 +1,6 @@
 // ===== 設定 =====
 const GAME_SECONDS = 50;      // 1プレイの制限時間
-const ROUND_WORD_COUNT = 12;  // 1プレイの出題数
+const PREVIEW_COUNT = 20;     // 予習画面に表示する単語数
 const LANE_STAGGER = 1200;    // 開始直後にレーンごとに落下をずらす時間差(ms)
 const FALL_DURATION = 9000;   // 上から地面まで落ちる時間(ms)
 const LANES = [16.67, 50, 83.33]; // レーンのx位置(%)
@@ -215,7 +215,7 @@ function selectRoundWords() {
   const review = shuffle([...reviewSet].filter((id) => inLevel.has(id))).map((id) => byId.get(id));
   const fresh = shuffle(pool.filter((w) => !reviewSet.has(w.id) && !masteredSet.has(w.id)));
   const mastered = shuffle(pool.filter((w) => masteredSet.has(w.id) && !reviewSet.has(w.id)));
-  return [...review, ...fresh, ...mastered].slice(0, ROUND_WORD_COUNT);
+  return [...review, ...fresh, ...mastered];
 }
 
 // ===== ゲーム状態 =====
@@ -245,7 +245,7 @@ function renderPreview() {
   list.classList.remove("meanings-hidden");
   $("#btn-hide-meanings").textContent = "意味を隠してテスト";
   list.innerHTML = "";
-  for (const w of roundWords) {
+  for (const w of roundWords.slice(0, PREVIEW_COUNT)) {
     const li = document.createElement("li");
     const badge = reviewSet.has(w.id) ? '<span class="badge badge-review">復習</span>' : "";
     li.innerHTML = `<span class="en">${w.en}</span>${badge}<span class="ja">${w.ja}</span>`;
@@ -261,7 +261,7 @@ function startGame() {
   game.startTime = performance.now();
   $("#score").textContent = "0";
   $("#time-left").textContent = String(GAME_SECONDS);
-  $("#words-left").textContent = String(roundWords.length);
+  $("#words-left").textContent = "0";
   $("#play-area").querySelectorAll(".falling-word, .float-score").forEach((el) => el.remove());
   buildLaneAnswers();
   for (let lane = 0; lane < LANES.length; lane++) renderLaneChoices(lane, null);
@@ -286,10 +286,14 @@ function tick(now) {
   // 出現: レーンが空いたら即座に次の単語を落とし、問題間の待ち時間をなくす。
   // 開始直後だけはレーンごとに時間差をつけて、横並びで落ちないようにする。
   for (let lane = 0; lane < LANES.length; lane++) {
-    if (game.spawnedCount >= roundWords.length) break;
     if (elapsed < lane * LANE_STAGGER) continue;
     const laneBusy = game.falling.some((f) => f.lane === lane && !f.resolved);
     if (laneBusy) continue;
+    // 出題キューが尽きたら、レベル内の全単語をシャッフルして追補し、50秒間出題が途切れないようにする
+    if (game.spawnedCount >= roundWords.length) {
+      const pool = WORDS.filter((w) => w.level === selectedLevel);
+      roundWords = roundWords.concat(shuffle(pool));
+    }
     spawnWord(roundWords[game.spawnedCount], lane, now);
     game.spawnedCount++;
   }
@@ -308,15 +312,6 @@ function tick(now) {
   }
 
   updateTargets();
-
-  // 全単語を処理し終えたら終了
-  if (
-    game.spawnedCount >= roundWords.length &&
-    game.falling.every((f) => f.resolved)
-  ) {
-    endGame();
-    return;
-  }
 
   game.rafId = requestAnimationFrame(tick);
 }
@@ -406,7 +401,7 @@ function onChoice(lane, btn) {
     t.el.classList.remove("target");
     t.el.classList.add("pop");
     setTimeout(() => t.el.remove(), 300);
-    updateWordsLeft();
+    updateCorrectCount();
   } else {
     btn.classList.add("wrong");
     btn.disabled = true;
@@ -430,7 +425,6 @@ function resolveMissed(f) {
   f.el.classList.remove("target");
   f.el.classList.add("crash");
   setTimeout(() => f.el.remove(), 350);
-  updateWordsLeft();
 }
 
 // ===== 演出ヘルパー =====
@@ -472,9 +466,10 @@ function updateComboDisplay() {
   }
 }
 
-function updateWordsLeft() {
-  const done = game.falling.filter((f) => f.resolved).length;
-  $("#words-left").textContent = String(roundWords.length - done);
+function updateCorrectCount() {
+  let correct = 0;
+  for (const r of game.results.values()) if (r === "correct") correct++;
+  $("#words-left").textContent = String(correct);
 }
 
 function addScore(delta, nearEl, bonus) {
@@ -567,9 +562,11 @@ function renderResult(isRecord, rankIndex) {
   const list = $("#result-list");
   list.innerHTML = "";
   // 間違えた単語を上に表示して復習しやすくする
+  // 出題キューの追補で同じ単語が複数回入っていることがあるので、単語IDで重複を除く
   const order = { wrong: 0, missed: 1, correct: 2 };
+  const seen = new Set();
   const entries = roundWords
-    .filter((w) => game.results.has(w.id))
+    .filter((w) => game.results.has(w.id) && !seen.has(w.id) && seen.add(w.id))
     .sort((a, b) => order[game.results.get(a.id)] - order[game.results.get(b.id)]);
   for (const w of entries) {
     const li = document.createElement("li");
