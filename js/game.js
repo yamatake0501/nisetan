@@ -1,7 +1,7 @@
 // ===== 設定 =====
 const GAME_SECONDS = 50;      // 1プレイの制限時間
 const ROUND_WORD_COUNT = 12;  // 1プレイの出題数
-const SPAWN_INTERVAL = 3500;  // 出現間隔(ms)
+const LANE_STAGGER = 1200;    // 開始直後にレーンごとに落下をずらす時間差(ms)
 const FALL_DURATION = 9000;   // 上から地面まで落ちる時間(ms)
 const LANES = [16.67, 50, 83.33]; // レーンのx位置(%)
 
@@ -273,12 +273,14 @@ function tick(now) {
     return;
   }
 
-  // 出現(レーンを順番に回して時間差で落とす)
-  while (
-    game.spawnedCount < roundWords.length &&
-    elapsed >= game.spawnedCount * SPAWN_INTERVAL
-  ) {
-    spawnWord(roundWords[game.spawnedCount], game.spawnedCount % LANES.length, now);
+  // 出現: レーンが空いたら即座に次の単語を落とし、問題間の待ち時間をなくす。
+  // 開始直後だけはレーンごとに時間差をつけて、横並びで落ちないようにする。
+  for (let lane = 0; lane < LANES.length; lane++) {
+    if (game.spawnedCount >= roundWords.length) break;
+    if (elapsed < lane * LANE_STAGGER) continue;
+    const laneBusy = game.falling.some((f) => f.lane === lane && !f.resolved);
+    if (laneBusy) continue;
+    spawnWord(roundWords[game.spawnedCount], lane, now);
     game.spawnedCount++;
   }
 
