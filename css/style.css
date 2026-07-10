@@ -47,13 +47,52 @@ body {
 
 .screen.active {
   display: flex;
+  animation: screenFadeIn 0.25s ease;
+}
+
+@keyframes screenFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- 効果音トグル ---------- */
+.home-topbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sound-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.1s;
+}
+
+.sound-toggle:active {
+  transform: scale(0.9);
+}
+
+.sound-toggle-inline {
+  width: 26px;
+  height: 26px;
+  background: var(--panel-light);
+  font-size: 13px;
 }
 
 /* ---------- ホーム ---------- */
 .logo {
   font-size: 44px;
   text-align: center;
-  margin-top: 7vh;
+  margin-top: 2vh;
   letter-spacing: 6px;
   background: linear-gradient(135deg, #38bdf8, #a78bfa);
   -webkit-background-clip: text;
@@ -259,6 +298,49 @@ body {
   flex-shrink: 0;
 }
 
+/* ---------- ランキング ---------- */
+.ranking-list {
+  list-style: none;
+  flex: 1;
+  overflow-y: auto;
+  margin: 16px 0;
+}
+
+.ranking-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+}
+
+.rank-badge {
+  font-size: 15px;
+  font-weight: bold;
+  min-width: 34px;
+}
+
+.rank-score {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--accent);
+}
+
+.rank-date {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.ranking-empty {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 40px 10px;
+}
+
 /* ---------- ゲーム ---------- */
 #screen-game {
   padding: 0;
@@ -283,6 +365,14 @@ body {
 
 .game-info.score {
   color: var(--accent);
+}
+
+.game-info.score.bump {
+  animation: scoreBump 0.3s;
+}
+
+@keyframes scoreBump {
+  40% { transform: scale(1.25); }
 }
 
 .game-info.combo {
@@ -324,6 +414,35 @@ body {
   opacity: 0.7;
 }
 
+#ground.flash {
+  animation: groundFlash 0.4s;
+}
+
+@keyframes groundFlash {
+  0%, 100% { opacity: 0.7; box-shadow: none; }
+  30% { opacity: 1; box-shadow: 0 0 20px 6px rgba(248, 113, 113, 0.8); }
+}
+
+.burst-ring {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 3px solid var(--success);
+  pointer-events: none;
+  animation: burstExpand 0.5s ease-out forwards;
+}
+
+@keyframes burstExpand {
+  to {
+    width: 90px;
+    height: 90px;
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
 .falling-word {
   position: absolute;
   transform: translateX(-50%);
@@ -342,7 +461,12 @@ body {
   background: #0c4a6e;
   border-color: var(--accent);
   color: #e0f2fe;
-  box-shadow: 0 0 18px rgba(56, 189, 248, 0.5);
+  animation: targetPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes targetPulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(56, 189, 248, 0.4); }
+  50% { box-shadow: 0 0 22px rgba(56, 189, 248, 0.85); }
 }
 
 .falling-word.pop {
@@ -382,6 +506,15 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.lane-card.shake {
+  animation: laneShake 0.35s;
+}
+
+@keyframes laneShake {
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
 }
 
 .lane-target {

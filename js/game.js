@@ -18,7 +18,10 @@ const STORAGE_KEYS = {
   mastered: "nisetan_mastered",   // 習得済みの単語id
   highscore: "nisetan_highscore", // レベルごとのハイスコア {level: score}
   level: "nisetan_level",         // 最後に選んだレベル
+  ranking: "nisetan_ranking",     // レベルごとの上位スコア履歴 {level: [{score, date}]}
 };
+const SOUND_KEY = "nisetan_sound"; // 効果音のオン・オフ設定（学習データリセットの対象外）
+const RANKING_SIZE = 5;
 
 function loadIds(key) {
   try {
@@ -41,12 +44,33 @@ function loadHighscores() {
   }
 }
 
+function loadRankings() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEYS.ranking)) || {};
+  } catch {
+    return {};
+  }
+}
+
 let reviewSet = loadIds(STORAGE_KEYS.review);
 let masteredSet = loadIds(STORAGE_KEYS.mastered);
 let highscores = loadHighscores();
+let rankings = loadRankings();
+let soundEnabled = localStorage.getItem(SOUND_KEY) !== "off";
 let selectedLevel =
   localStorage.getItem(STORAGE_KEYS.level) ||
   (typeof LEVELS !== "undefined" ? LEVELS[0].id : "univ");
+
+// 今回のプレイでランキングに入った順位を記録する（1位から数える。圏外なら-1）
+function recordRanking(level, score) {
+  const list = rankings[level] || [];
+  const entry = { score, date: new Date().toISOString() };
+  list.push(entry);
+  list.sort((a, b) => b.score - a.score);
+  rankings[level] = list.slice(0, RANKING_SIZE);
+  localStorage.setItem(STORAGE_KEYS.ranking, JSON.stringify(rankings));
+  return rankings[level].indexOf(entry);
+}
 
 // ===== ユーティリティ =====
 function shuffle(arr) {
@@ -64,6 +88,77 @@ function showScreen(id) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
   $(id).classList.add("active");
 }
+
+// ===== 効果音（Web Audio APIで合成、音声ファイル不要） =====
+let audioCtx = null;
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+
+function playToneAt(freq, startTime, duration, type, gainStart) {
+  const ctx = getAudioCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(gainStart, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.02);
+}
+
+function playCorrectSound() {
+  if (!soundEnabled) return;
+  const t = getAudioCtx().currentTime;
+  [660, 990].forEach((freq, i) => playToneAt(freq, t + i * 0.05, 0.12, "sine", 0.14));
+}
+
+function playWrongSound() {
+  if (!soundEnabled) return;
+  playToneAt(200, getAudioCtx().currentTime, 0.22, "sawtooth", 0.1);
+}
+
+function playMissedSound() {
+  if (!soundEnabled) return;
+  playToneAt(140, getAudioCtx().currentTime, 0.3, "square", 0.08);
+}
+
+function playComboSound(combo) {
+  if (!soundEnabled) return;
+  playToneAt(700 + Math.min(combo, 15) * 35, getAudioCtx().currentTime, 0.1, "triangle", 0.09);
+}
+
+function playStartSound() {
+  if (!soundEnabled) return;
+  const t = getAudioCtx().currentTime;
+  [440, 554, 659].forEach((freq, i) => playToneAt(freq, t + i * 0.08, 0.12, "sine", 0.12));
+}
+
+function playEndSound(isRecord) {
+  if (!soundEnabled) return;
+  const t = getAudioCtx().currentTime;
+  const notes = isRecord ? [523, 659, 784, 1047] : [523, 440, 349];
+  notes.forEach((freq, i) => playToneAt(freq, t + i * 0.1, 0.18, "sine", 0.12));
+}
+
+function updateSoundToggleUI() {
+  document.querySelectorAll(".sound-toggle").forEach((b) => {
+    b.textContent = soundEnabled ? "🔊" : "🔇";
+  });
+}
+
+document.querySelectorAll(".sound-toggle").forEach((b) => {
+  b.addEventListener("click", () => {
+    soundEnabled = !soundEnabled;
+    localStorage.setItem(SOUND_KEY, soundEnabled ? "on" : "off");
+    updateSoundToggleUI();
+    if (soundEnabled) playToneAt(660, getAudioCtx().currentTime, 0.08, "sine", 0.1);
+  });
+});
 
 // ===== レーンごとの解答パネル =====
 // レーンごとに独立したターゲット単語・3択を持たせ、複数レーンを同時に回答できるようにする
@@ -162,6 +257,7 @@ function startGame() {
   for (let lane = 0; lane < LANES.length; lane++) renderLaneChoices(lane, null);
   updateComboDisplay();
   showScreen("#screen-game");
+  playStartSound();
   game.rafId = requestAnimationFrame(tick);
 }
 
@@ -290,6 +386,9 @@ function onChoice(lane, btn) {
 
     addScore(total, t.el, { speedBonus, multiplier });
     updateComboDisplay();
+    spawnBurst(t.el);
+    if (game.combo >= 2) playComboSound(game.combo);
+    else playCorrectSound();
 
     t.resolved = true;
     t.el.classList.remove("target");
@@ -303,6 +402,8 @@ function onChoice(lane, btn) {
     game.combo = 0;
     updateComboDisplay();
     addScore(SCORE_WRONG, t.el);
+    playWrongSound();
+    shakeLane(lane);
   }
 }
 
@@ -312,10 +413,37 @@ function resolveMissed(f) {
   game.combo = 0;
   updateComboDisplay();
   addScore(SCORE_MISSED, f.el);
+  playMissedSound();
+  flashGround();
   f.el.classList.remove("target");
   f.el.classList.add("crash");
   setTimeout(() => f.el.remove(), 350);
   updateWordsLeft();
+}
+
+// ===== 演出ヘルパー =====
+function spawnBurst(nearEl) {
+  const burst = document.createElement("div");
+  burst.className = "burst-ring";
+  burst.style.left = nearEl.style.left;
+  burst.style.top = nearEl.style.top;
+  $("#play-area").appendChild(burst);
+  setTimeout(() => burst.remove(), 500);
+}
+
+function shakeLane(lane) {
+  const card = laneEls[lane]?.card;
+  if (!card) return;
+  card.classList.remove("shake");
+  void card.offsetWidth; // アニメーションを再トリガーするための強制リフロー
+  card.classList.add("shake");
+}
+
+function flashGround() {
+  const ground = $("#ground");
+  ground.classList.remove("flash");
+  void ground.offsetWidth;
+  ground.classList.add("flash");
 }
 
 function updateComboDisplay() {
@@ -340,6 +468,10 @@ function updateWordsLeft() {
 function addScore(delta, nearEl, bonus) {
   game.score += delta;
   $("#score").textContent = String(game.score);
+  const scoreEl = $(".game-info.score");
+  scoreEl.classList.remove("bump");
+  void scoreEl.offsetWidth; // アニメーションを再トリガーするための強制リフロー
+  scoreEl.classList.add("bump");
   // 単語の近くに +100 / -50 と、スピード・コンボボーナスの内訳をふわっと表示
   const float = document.createElement("div");
   float.className = `float-score ${delta > 0 ? "plus" : "minus"}`;
@@ -389,19 +521,24 @@ function endGame() {
     highscores[selectedLevel] = game.score;
     localStorage.setItem(STORAGE_KEYS.highscore, JSON.stringify(highscores));
   }
+  const rankIndex = recordRanking(selectedLevel, game.score);
 
-  renderResult(isRecord);
+  playEndSound(isRecord);
+  renderResult(isRecord, rankIndex);
   showScreen("#screen-result");
 }
 
-function renderResult(isRecord) {
+function renderResult(isRecord, rankIndex) {
   $("#result-score").textContent = String(game.score);
 
   const counts = { correct: 0, wrong: 0, missed: 0 };
   for (const r of game.results.values()) counts[r]++;
+  const badges = [];
+  if (isRecord) badges.push('<span class="new-record">🎉 ハイスコア更新！</span>');
+  if (rankIndex >= 0) badges.push(`<span class="new-record">🏆 ランキング${rankIndex + 1}位！</span>`);
   $("#result-detail").innerHTML =
     `正解 ${counts.correct} / 不正解 ${counts.wrong} / 落下 ${counts.missed}` +
-    (isRecord ? ' <span class="new-record">🎉 ハイスコア更新！</span>' : "");
+    (badges.length ? ` ${badges.join(" ")}` : "");
 
   const labels = {
     correct: '<span class="badge badge-correct">正解</span>',
@@ -428,8 +565,8 @@ function renderResult(isRecord) {
 }
 
 // ===== ホーム =====
-function renderLevelSelect() {
-  const container = $("#level-select");
+// レベル選択UIはホーム画面・ランキング画面の両方で使うので共通化する
+function buildLevelSelect(container, onChange) {
   container.innerHTML = "";
   for (const lv of LEVELS) {
     const btn = document.createElement("button");
@@ -439,14 +576,14 @@ function renderLevelSelect() {
     btn.addEventListener("click", () => {
       selectedLevel = lv.id;
       localStorage.setItem(STORAGE_KEYS.level, selectedLevel);
-      renderHome();
+      onChange();
     });
     container.appendChild(btn);
   }
 }
 
 function renderHome() {
-  renderLevelSelect();
+  buildLevelSelect($("#level-select"), renderHome);
   // 選択中レベルの単語だけで集計する
   const levelIds = WORDS.filter((w) => w.level === selectedLevel).map((w) => w.id);
   const total = levelIds.length;
@@ -455,6 +592,31 @@ function renderHome() {
   $("#stat-mastered").textContent = `${mastered}/${total}`;
   $("#stat-review").textContent = String(review);
   $("#stat-highscore").textContent = String(highscores[selectedLevel] || 0);
+}
+
+// ===== ランキング =====
+const RANK_MEDALS = ["🥇", "🥈", "🥉"];
+
+function renderRanking() {
+  buildLevelSelect($("#ranking-level-select"), renderRanking);
+  const list = $("#ranking-list");
+  list.innerHTML = "";
+  const entries = rankings[selectedLevel] || [];
+  if (!entries.length) {
+    const li = document.createElement("li");
+    li.className = "ranking-empty";
+    li.textContent = "まだ記録がありません。プレイしてランキング入りを目指そう！";
+    list.appendChild(li);
+    return;
+  }
+  entries.forEach((entry, i) => {
+    const li = document.createElement("li");
+    const rankLabel = RANK_MEDALS[i] || `${i + 1}位`;
+    const date = new Date(entry.date);
+    const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+    li.innerHTML = `<span class="rank-badge">${rankLabel}</span><span class="rank-score">${entry.score}pt</span><span class="rank-date">${dateStr}</span>`;
+    list.appendChild(li);
+  });
 }
 
 // ===== イベント =====
@@ -488,12 +650,24 @@ $("#btn-result-home").addEventListener("click", () => {
 });
 
 $("#btn-reset").addEventListener("click", () => {
-  if (!confirm("習得済み・復習待ち・ハイスコアの記録をすべて消します。よろしいですか？")) return;
+  if (!confirm("習得済み・復習待ち・ハイスコア・ランキングの記録をすべて消します。よろしいですか？")) return;
   reviewSet = new Set();
   masteredSet = new Set();
   highscores = {};
+  rankings = {};
   Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
   renderHome();
 });
 
+$("#btn-to-ranking").addEventListener("click", () => {
+  renderRanking();
+  showScreen("#screen-ranking");
+});
+
+$("#btn-ranking-home").addEventListener("click", () => {
+  renderHome();
+  showScreen("#screen-home");
+});
+
+updateSoundToggleUI();
 renderHome();

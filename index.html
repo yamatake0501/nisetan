@@ -11,6 +11,9 @@
 
     <!-- ホーム画面 -->
     <section id="screen-home" class="screen active">
+      <div class="home-topbar">
+        <button class="sound-toggle" aria-label="効果音のオン・オフ">🔊</button>
+      </div>
       <h1 class="logo">ニセタン</h1>
       <p class="tagline">落ちてくる英単語を3択でキャッチ！<br>大学入試〜TOEIC 800点レベルの単語をマスターしよう</p>
 
@@ -32,7 +35,17 @@
         </div>
       </div>
       <button id="btn-to-preview" class="btn btn-primary">プレイする単語を予習する</button>
+      <button id="btn-to-ranking" class="btn btn-ghost">🏆 ランキングを見る</button>
       <button id="btn-reset" class="btn btn-ghost">学習データをリセット</button>
+    </section>
+
+    <!-- ランキング画面 -->
+    <section id="screen-ranking" class="screen">
+      <h2 class="screen-title">🏆 ランキング</h2>
+      <p class="hint">レベルごとのベストスコア上位5件（この端末に保存されます）。</p>
+      <div class="level-select" id="ranking-level-select"></div>
+      <ol id="ranking-list" class="ranking-list"></ol>
+      <button id="btn-ranking-home" class="btn btn-ghost">← 戻る</button>
     </section>
 
     <!-- 予習画面 -->
@@ -54,6 +67,7 @@
         <div class="game-info score">💎 <span id="score">0</span>pt</div>
         <div class="game-info combo" id="combo-info" hidden>🔥 <span id="combo-count">0</span>連続</div>
         <div class="game-info">残り <span id="words-left">0</span>語</div>
+        <button class="sound-toggle sound-toggle-inline" aria-label="効果音のオン・オフ">🔊</button>
       </header>
       <div id="play-area">
         <div class="lane-divider" style="left: 33.33%"></div>
