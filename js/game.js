@@ -19,6 +19,7 @@ const STORAGE_KEYS = {
   highscore: "nisetan_highscore", // レベルごとのハイスコア {level: score}
   level: "nisetan_level",         // 最後に選んだレベル
   ranking: "nisetan_ranking",     // レベルごとの上位スコア履歴 {level: [{score, date}]}
+  misscount: "nisetan_misscount", // 単語ごとのミス回数 {単語id: ミス回数}
 };
 const SOUND_KEY = "nisetan_sound"; // 効果音のオン・オフ設定（学習データリセットの対象外）
 const RANKING_SIZE = 5;
@@ -52,10 +53,19 @@ function loadRankings() {
   }
 }
 
+function loadMissCounts() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEYS.misscount)) || {};
+  } catch {
+    return {};
+  }
+}
+
 let reviewSet = loadIds(STORAGE_KEYS.review);
 let masteredSet = loadIds(STORAGE_KEYS.mastered);
 let highscores = loadHighscores();
 let rankings = loadRankings();
+let missCounts = loadMissCounts();
 let soundEnabled = localStorage.getItem(SOUND_KEY) !== "off";
 let selectedLevel =
   localStorage.getItem(STORAGE_KEYS.level) ||
@@ -509,13 +519,20 @@ function endGame() {
     if (result === "correct") {
       reviewSet.delete(id);
       masteredSet.add(id);
+      // 正解できたらミス回数を1減らし、0になったら苦手単語から外す
+      const next = (missCounts[id] || 0) - 1;
+      if (next > 0) missCounts[id] = next;
+      else delete missCounts[id];
     } else {
       reviewSet.add(id);
       masteredSet.delete(id);
+      // 不正解・落下はミス回数を1増やす
+      missCounts[id] = (missCounts[id] || 0) + 1;
     }
   }
   saveIds(STORAGE_KEYS.review, reviewSet);
   saveIds(STORAGE_KEYS.mastered, masteredSet);
+  localStorage.setItem(STORAGE_KEYS.misscount, JSON.stringify(missCounts));
 
   const prevBest = highscores[selectedLevel] || 0;
   const isRecord = game.score > prevBest;
@@ -621,6 +638,29 @@ function renderRanking() {
   });
 }
 
+// ===== 苦手単語 =====
+function renderWeak() {
+  buildLevelSelect($("#weak-level-select"), renderWeak);
+  const list = $("#weak-list");
+  list.innerHTML = "";
+  // 選択中レベルのうち、ミス回数が残っている単語をミス回数の多い順に並べる
+  const entries = WORDS.filter((w) => w.level === selectedLevel && (missCounts[w.id] || 0) > 0).sort(
+    (a, b) => missCounts[b.id] - missCounts[a.id]
+  );
+  if (!entries.length) {
+    const li = document.createElement("li");
+    li.className = "ranking-empty";
+    li.textContent = "苦手単語はありません。";
+    list.appendChild(li);
+    return;
+  }
+  for (const w of entries) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="en">${w.en}</span><span class="badge badge-wrong">×${missCounts[w.id]}</span><span class="ja">${w.ja}</span>`;
+    list.appendChild(li);
+  }
+}
+
 // ===== イベント =====
 $("#btn-to-preview").addEventListener("click", () => {
   renderPreview();
@@ -657,6 +697,7 @@ $("#btn-reset").addEventListener("click", () => {
   masteredSet = new Set();
   highscores = {};
   rankings = {};
+  missCounts = {};
   Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
   renderHome();
 });
@@ -667,6 +708,16 @@ $("#btn-to-ranking").addEventListener("click", () => {
 });
 
 $("#btn-ranking-home").addEventListener("click", () => {
+  renderHome();
+  showScreen("#screen-home");
+});
+
+$("#btn-to-weak").addEventListener("click", () => {
+  renderWeak();
+  showScreen("#screen-weak");
+});
+
+$("#btn-weak-home").addEventListener("click", () => {
   renderHome();
   showScreen("#screen-home");
 });
