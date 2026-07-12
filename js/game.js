@@ -21,6 +21,7 @@ const STORAGE_KEYS = {
   ranking: "nisetan_ranking",     // レベルごとの上位スコア履歴 {level: [{score, date}]}
   misscount: "nisetan_misscount", // 単語ごとのミス回数 {単語id: ミス回数}
   streak: "nisetan_streak",       // 単語ごとの連続正解数 {単語id: 連続正解数}
+  streakDays: "nisetan_streakdays", // 連続学習日数 {count: 連続日数, last: 最終プレイ日"YYYY-MM-DD"}
 };
 const SOUND_KEY = "nisetan_sound"; // 効果音のオン・オフ設定（学習データリセットの対象外）
 const RANKING_SIZE = 5;
@@ -70,12 +71,21 @@ function loadStreaks() {
   }
 }
 
+function loadStreakDays() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEYS.streakDays)) || { count: 0, last: "" };
+  } catch {
+    return { count: 0, last: "" };
+  }
+}
+
 let reviewSet = loadIds(STORAGE_KEYS.review);
 let masteredSet = loadIds(STORAGE_KEYS.mastered);
 let highscores = loadHighscores();
 let rankings = loadRankings();
 let missCounts = loadMissCounts();
 let streaks = loadStreaks();
+let streakDays = loadStreakDays();
 let soundEnabled = localStorage.getItem(SOUND_KEY) !== "off";
 let selectedLevel =
   localStorage.getItem(STORAGE_KEYS.level) ||
@@ -90,6 +100,26 @@ function recordRanking(level, score) {
   rankings[level] = list.slice(0, RANKING_SIZE);
   localStorage.setItem(STORAGE_KEYS.ranking, JSON.stringify(rankings));
   return rankings[level].indexOf(entry);
+}
+
+// 端末のローカル日付を"YYYY-MM-DD"で返す
+function todayStr(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// 連続学習日数を更新する。同じ日に何度呼ばれても1日として数える
+function recordStudyDay() {
+  const today = todayStr();
+  if (streakDays.last === today) return;
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  streakDays.count = streakDays.last === todayStr(yesterday) ? streakDays.count + 1 : 1;
+  streakDays.last = today;
+  localStorage.setItem(STORAGE_KEYS.streakDays, JSON.stringify(streakDays));
 }
 
 // ===== ユーティリティ =====
@@ -286,6 +316,7 @@ function renderPreview() {
 
 // ===== ゲーム本体 =====
 function startGame() {
+  recordStudyDay();
   game = newGameState();
   game.running = true;
   game.startTime = performance.now();
@@ -644,6 +675,16 @@ function renderHome() {
   $("#stat-mastered").textContent = `${mastered}/${total}`;
   $("#stat-review").textContent = String(review);
   $("#stat-highscore").textContent = String(highscores[selectedLevel] || 0);
+
+  // 連続学習日数バナー
+  const banner = $("#streak-banner");
+  if (streakDays.count >= 1 && streakDays.last === todayStr()) {
+    banner.textContent = `🔥 ${streakDays.count}日連続学習中！`;
+  } else if (streakDays.count >= 1) {
+    banner.textContent = `🔥 ${streakDays.count}日連続 — 今日プレイして継続！`;
+  } else {
+    banner.textContent = "";
+  }
 }
 
 // ===== ランキング =====
@@ -732,6 +773,7 @@ $("#btn-reset").addEventListener("click", () => {
   rankings = {};
   missCounts = {};
   streaks = {};
+  streakDays = { count: 0, last: "" };
   Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
   renderHome();
 });
