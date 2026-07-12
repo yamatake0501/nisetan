@@ -182,6 +182,14 @@ body {
   color: var(--accent);
 }
 
+.streak-banner {
+  text-align: center;
+  font-size: 13px;
+  color: var(--warning);
+  margin: -24px 0 24px;
+  min-height: 18px;
+}
+
 /* ---------- ボタン ---------- */
 .btn {
   display: block;
