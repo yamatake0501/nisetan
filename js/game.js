@@ -235,6 +235,12 @@ function buildLaneAnswers() {
 // 選択中のレベルの単語から、復習待ちを最優先で出題し、
 // 残りを未習得→習得済みの順で埋める
 function selectRoundWords() {
+  // 「間違いだけ復習」で指定された単語があれば、それだけを一度だけ出題する
+  if (pendingReviewWords && pendingReviewWords.length) {
+    const q = pendingReviewWords;
+    pendingReviewWords = null;
+    return q;
+  }
   const pool = WORDS.filter((w) => w.level === selectedLevel);
   const inLevel = new Set(pool.map((w) => w.id));
   const byId = new Map(pool.map((w) => [w.id, w]));
@@ -247,6 +253,8 @@ function selectRoundWords() {
 // ===== ゲーム状態 =====
 let roundWords = [];   // 今回の出題単語
 let game = null;       // プレイ中の状態
+let pendingReviewWords = null; // 「間違いだけ復習」で次回だけ出題する単語
+let lastMistakeWords = [];     // 直近のプレイで間違えた単語
 
 function newGameState() {
   return {
@@ -614,6 +622,19 @@ function renderResult(isRecord, rankIndex) {
   $("#requeue-note").textContent = requeue
     ? `⚠️ 間違えた${requeue}語は次回のプレイで優先的に再出題されます。`
     : "🎉 全問正解！すべて習得済みになりました。";
+
+  // 間違えた（不正解・落下）単語をidで逆引き・重複除去し、「間違いだけ復習」の候補にする
+  const mistakeSeen = new Set();
+  lastMistakeWords = [];
+  for (const [id, result] of game.results) {
+    if (result === "correct" || mistakeSeen.has(id)) continue;
+    const w = WORDS.find((x) => x.id === id);
+    if (w) {
+      mistakeSeen.add(id);
+      lastMistakeWords.push(w);
+    }
+  }
+  $("#btn-review-mistakes").hidden = lastMistakeWords.length === 0;
 }
 
 // ===== ホーム =====
@@ -715,6 +736,12 @@ $("#btn-hide-meanings").addEventListener("click", () => {
 $("#btn-start").addEventListener("click", startGame);
 
 $("#btn-retry").addEventListener("click", () => {
+  renderPreview();
+  showScreen("#screen-preview");
+});
+
+$("#btn-review-mistakes").addEventListener("click", () => {
+  pendingReviewWords = lastMistakeWords.slice();
   renderPreview();
   showScreen("#screen-preview");
 });
