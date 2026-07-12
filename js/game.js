@@ -20,6 +20,7 @@ const STORAGE_KEYS = {
   level: "nisetan_level",         // 最後に選んだレベル
   ranking: "nisetan_ranking",     // レベルごとの上位スコア履歴 {level: [{score, date}]}
   misscount: "nisetan_misscount", // 単語ごとのミス回数 {単語id: ミス回数}
+  streak: "nisetan_streak",       // 単語ごとの連続正解数 {単語id: 連続正解数}
 };
 const SOUND_KEY = "nisetan_sound"; // 効果音のオン・オフ設定（学習データリセットの対象外）
 const RANKING_SIZE = 5;
@@ -61,11 +62,20 @@ function loadMissCounts() {
   }
 }
 
+function loadStreaks() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEYS.streak)) || {};
+  } catch {
+    return {};
+  }
+}
+
 let reviewSet = loadIds(STORAGE_KEYS.review);
 let masteredSet = loadIds(STORAGE_KEYS.mastered);
 let highscores = loadHighscores();
 let rankings = loadRankings();
 let missCounts = loadMissCounts();
+let streaks = loadStreaks();
 let soundEnabled = localStorage.getItem(SOUND_KEY) !== "off";
 let selectedLevel =
   localStorage.getItem(STORAGE_KEYS.level) ||
@@ -247,7 +257,11 @@ function renderPreview() {
   list.innerHTML = "";
   for (const w of roundWords.slice(0, PREVIEW_COUNT)) {
     const li = document.createElement("li");
-    const badge = reviewSet.has(w.id) ? '<span class="badge badge-review">復習</span>' : "";
+    // 習得度を1つだけ表示する（習得 > あと1回 > 復習）
+    let badge = "";
+    if (masteredSet.has(w.id)) badge = '<span class="badge badge-correct">習得</span>';
+    else if (streaks[w.id] === 1) badge = '<span class="badge badge-review">あと1回</span>';
+    else if (reviewSet.has(w.id)) badge = '<span class="badge badge-review">復習</span>';
     li.innerHTML = `<span class="en">${w.en}</span>${badge}<span class="ja">${w.ja}</span>`;
     li.addEventListener("click", () => li.classList.toggle("revealed"));
     list.appendChild(li);
@@ -512,13 +526,17 @@ function endGame() {
   // 学習データを更新
   for (const [id, result] of game.results) {
     if (result === "correct") {
+      // 連続正解を数え、2連続正解で初めて習得済みにする
+      streaks[id] = (streaks[id] || 0) + 1;
       reviewSet.delete(id);
-      masteredSet.add(id);
+      if (streaks[id] >= 2) masteredSet.add(id);
       // 正解できたらミス回数を1減らし、0になったら苦手単語から外す
       const next = (missCounts[id] || 0) - 1;
       if (next > 0) missCounts[id] = next;
       else delete missCounts[id];
     } else {
+      // 間違えたら連続正解をリセットして復習に戻す
+      streaks[id] = 0;
       reviewSet.add(id);
       masteredSet.delete(id);
       // 不正解・落下はミス回数を1増やす
@@ -528,6 +546,7 @@ function endGame() {
   saveIds(STORAGE_KEYS.review, reviewSet);
   saveIds(STORAGE_KEYS.mastered, masteredSet);
   localStorage.setItem(STORAGE_KEYS.misscount, JSON.stringify(missCounts));
+  localStorage.setItem(STORAGE_KEYS.streak, JSON.stringify(streaks));
 
   const prevBest = highscores[selectedLevel] || 0;
   const isRecord = game.score > prevBest;
@@ -695,6 +714,7 @@ $("#btn-reset").addEventListener("click", () => {
   highscores = {};
   rankings = {};
   missCounts = {};
+  streaks = {};
   Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
   renderHome();
 });
