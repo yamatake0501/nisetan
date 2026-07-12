@@ -201,6 +201,11 @@ body {
   transform: scale(0.97);
 }
 
+/* hidden 属性が付いたボタンは非表示にする（.btn の display 指定を上書き） */
+.btn[hidden] {
+  display: none;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, #0ea5e9, #6366f1);
   color: #fff;
