@@ -155,6 +155,17 @@ function playEndSound(isRecord) {
   notes.forEach((freq, i) => playToneAt(freq, t + i * 0.1, 0.18, "sine", 0.12));
 }
 
+// ===== 発音読み上げ（Web Speech APIで音声合成） =====
+function speakWord(text) {
+  if (!soundEnabled) return;
+  if (!("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = "en-US";
+  utter.rate = 0.95;
+  speechSynthesis.speak(utter);
+}
+
 function updateSoundToggleUI() {
   document.querySelectorAll(".sound-toggle").forEach((b) => {
     b.textContent = soundEnabled ? "🔊" : "🔇";
@@ -185,6 +196,11 @@ function buildLaneAnswers() {
     const targetEl = document.createElement("div");
     targetEl.className = "lane-target";
     targetEl.innerHTML = "&nbsp;";
+    targetEl.style.cursor = "pointer";
+    targetEl.addEventListener("click", () => {
+      const cur = game.laneTargets[lane];
+      if (cur && !cur.resolved) speakWord(cur.word.en);
+    });
 
     const choicesEl = document.createElement("div");
     choicesEl.className = "lane-choices";
@@ -396,6 +412,7 @@ function onChoice(lane, btn) {
     spawnBurst(t.el);
     if (game.combo >= 2) playComboSound(game.combo);
     else playCorrectSound();
+    speakWord(t.word.en);
 
     t.resolved = true;
     t.el.classList.remove("target");
